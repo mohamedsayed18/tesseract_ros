@@ -12,6 +12,19 @@ tesseract_common::VectorIsometry3d tool_poses = makePuzzleToolPoses();
 `/config/puzzle_bent.csv` and return a list of the target poses.
 
 ```cpp
+// Create manipulator information for program
+ManipulatorInfo mi;
+mi.manipulator = "manipulator_aux";
+mi.working_frame = "part";
+mi.tcp = ToolCenterPoint("grinder_frame", true);  // true - indicates this is an external TCP
+```
+
+We define the manipulator information for our problem, 
+"manipulator_aux": This is the name of the group as defined in the srdf file
+"working_frame": Is the reference frame the points will be refereed to it.
+"tcp": Is the tool center point we want to plan our motion on it.
+
+```cpp
 // Create cartesian waypoint
 Waypoint wp = CartesianWaypoint(tool_poses[0]);
 PlanInstruction plan_instruction(wp, PlanInstructionType::START, "CARTESIAN");
@@ -19,7 +32,44 @@ plan_instruction.setDescription("from_start_plan");
 program.setStartInstruction(plan_instruction);
 ```
 
+```cpp
+// Create Program
+CompositeInstruction program("DEFAULT", CompositeInstructionOrder::ORDERED, mi);
+```
+
+We create the program, we define its the order of waypoints execution. It can be one of the following:
+
+* ORDERED: Must go in forward
+* UNORDERED: Any order is allowed
+* ORDERED_AND_REVERABLE: Can go forward or reverse the order
+
+The last parameter is the manipulator we created above `mi`
+
+Now, Let's add the instructions to the program.
 The first pose is set as the start poses.
+
+```cpp
+// Create cartesian waypoint
+Waypoint wp = CartesianWaypoint(tool_poses[0]);
+PlanInstruction plan_instruction(wp, PlanInstructionType::START, "CARTESIAN");
+plan_instruction.setDescription("from_start_plan");
+program.setStartInstruction(plan_instruction);
+```
+
+We create a waypoint then make this waypoint an instruction and add it to the program.
+
+To create a waypoint we have many ways to do so. One of them is using the `CartesianWaypoint`
+
+Then we decide how to move to this waypoint, We having the following options:
+
+* LINEAR: Straight line motion
+* FREESPACE: Move to the point freely
+* CIRCULAR: Circular motion to the point
+* START: This point is the start point of your program
+
+The `plan_instruction` takes the waypoint, the type of instruction and string which acts as a label for the instruction. We can also add a description to the instruction using `setDescription`.
+
+For the start instruction we use the `setStartInstruction`
 
 ```cpp
 for (std::size_t i = 1; i < tool_poses.size(); ++i)
@@ -32,6 +82,15 @@ for (std::size_t i = 1; i < tool_poses.size(); ++i)
 ```
 
 A linear motion is set between the rest of the points.
+
+```cpp
+// Create Process Planning Server
+ProcessPlanningServer planning_server(std::make_shared<ROSProcessEnvironmentCache>(monitor_), 5);
+planning_server.loadDefaultProcessPlanners();
+```
+
+We create a server object which will take the program as request and return the response.
+The "loadDefaultProcessPlanners" method load the default process planners, But we can load specific plannners.
 
 ```cpp
 const std::string new_planner_name = "TRAJOPT_NO_POST_CHECK";
@@ -77,7 +136,7 @@ In the `TrajOptDefaultCompositeProfile`, we can set the following parameters:
 
 `collision_cost_config`: to give costs for the collision.
 
-`collision_cost_config.safety_margin`: define the safety margin for collision
+`collision_cost_config.safety_margin`: Define the safety margin for collision
 
 `collision_cost_config.type`: It can take the following values:
 
